@@ -18,6 +18,9 @@ const getTransporter = () => {
   });
 };
 
+const getErrMessage = (err, fallback) =>
+  err?.response || err?.message || fallback;
+
 const DEFAULT_TEMPLATES = {
   responsible_subject: "ACTION REQUIRED: {{license_name}} expires in {{days_left}} days",
   responsible_body: `Dear {{person_name}},
@@ -103,7 +106,7 @@ export const sendTestMail = async () => {
   try {
     await transporter.verify();
   } catch (err) {
-    return { ok: false, error: "Mail transport verification failed" };
+    return { ok: false, error: getErrMessage(err, "Mail transport verification failed") };
   }
 
   await transporter.sendMail({
@@ -169,7 +172,7 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
   try {
     await transporter.verify();
   } catch (err) {
-    return { ok: false, error: "Mail transport verification failed" };
+    return { ok: false, error: getErrMessage(err, "Mail transport verification failed") };
   }
 
   const { rows: licenseRows } = await pool.query(
@@ -199,6 +202,7 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
 
   let sent = 0;
   let failed = 0;
+  let firstFailureReason = null;
 
   for (const person of recipients) {
     const isResponsible = person.responsibility === "RESPONSIBLE";
@@ -215,9 +219,20 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
       await logMail(license.id, person, mailType, subject, body, "SENT");
       sent++;
     } catch (err) {
+      firstFailureReason = firstFailureReason || getErrMessage(err, "Mail send failed");
       await logMail(license.id, person, mailType, subject, body, "FAILED");
       failed++;
     }
+  }
+
+  if (sent === 0) {
+    return {
+      ok: false,
+      error: firstFailureReason || "All notification sends failed",
+      sent,
+      failed,
+      total: recipients.length
+    };
   }
 
   return { ok: true, sent, failed, total: recipients.length };
@@ -231,7 +246,7 @@ export const sendNotificationsForLicense = async (license) => {
   try {
     await transporter.verify();
   } catch (err) {
-    return { ok: false, error: "Mail transport verification failed" };
+    return { ok: false, error: getErrMessage(err, "Mail transport verification failed") };
   }
 
   const daysLeft = daysBetween(new Date(), license.expiry_date);
@@ -252,6 +267,7 @@ export const sendNotificationsForLicense = async (license) => {
 
   let sent = 0;
   let failed = 0;
+  let firstFailureReason = null;
 
   for (const person of recipients) {
     const isResponsible = person.responsibility === "RESPONSIBLE";
@@ -268,9 +284,20 @@ export const sendNotificationsForLicense = async (license) => {
       await logMail(license.id, person, mailType, subject, body, "SENT");
       sent++;
     } catch (err) {
+      firstFailureReason = firstFailureReason || getErrMessage(err, "Mail send failed");
       await logMail(license.id, person, mailType, subject, body, "FAILED");
       failed++;
     }
+  }
+
+  if (sent === 0) {
+    return {
+      ok: false,
+      error: firstFailureReason || "All notification sends failed",
+      sent,
+      failed,
+      total: recipients.length
+    };
   }
 
   return { ok: true, sent, failed, total: recipients.length };

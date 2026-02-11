@@ -277,13 +277,36 @@ const App = () => {
 
   const handleManualSend = async (license) => {
     try {
-      await fetchJson(`${API_BASE_URL}/api/licenses/${license.id}/notify`, {
+      const result = await fetchJson(`${API_BASE_URL}/api/licenses/${license.id}/notify`, {
         method: 'POST'
       });
       loadMailLogs(); 
-      alert(`Notifications triggered successfully.`);
+      if (result?.failed > 0) {
+        alert(`Notifications sent with partial failures. Sent: ${result.sent || 0}, Failed: ${result.failed || 0}.`);
+      } else {
+        alert(`Notifications sent successfully. Sent: ${result?.sent || 0}.`);
+      }
     } catch (err) {
       alert(err.message || "Failed to send notifications. Check backend.");
+    }
+  };
+
+  const handleDeleteLicense = async (license) => {
+    const ok = window.confirm(`Delete license "${license.name}" permanently?`);
+    if (!ok) return;
+    try {
+      await fetchJson(`${API_BASE_URL}/api/licenses/${license.id}`, {
+        method: 'DELETE'
+      });
+      if (selectedLicense?.id === license.id) {
+        setSelectedLicense(null);
+        setCurrentView('list');
+      }
+      await loadLicenses();
+      await loadMailLogs();
+      alert("License deleted successfully.");
+    } catch (err) {
+      alert(err.message || "Failed to delete license.");
     }
   };
 
@@ -647,6 +670,7 @@ const App = () => {
               <div className="flex items-center gap-1">
                 <button onClick={() => handleManualSend(l)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Send size={16} /></button>
                 <button onClick={() => { setSelectedLicense(l); setIsLicenseModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg"><Edit3 size={16} /></button>
+                <button onClick={() => handleDeleteLicense(l)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={16} /></button>
               </div>
             </div>
             <h4 className="text-lg font-black text-slate-800 mb-1 leading-tight">{l.name}</h4>
@@ -763,7 +787,14 @@ const App = () => {
               <Header title={selectedLicense.name} showBack onBack={() => setCurrentView('list')} />
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card className="lg:col-span-2">
-                   <h3 className="font-black text-slate-800 mb-6 flex items-center gap-2"><Info size={18} className="text-indigo-600" /> Technical Matrix</h3>
+                   <div className="flex items-center justify-between mb-6">
+                     <h3 className="font-black text-slate-800 flex items-center gap-2"><Info size={18} className="text-indigo-600" /> Technical Matrix</h3>
+                     <div className="flex items-center gap-2">
+                       <button onClick={() => handleManualSend(selectedLicense)} className="px-3 py-2 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center gap-1"><Send size={14}/>Send Mail</button>
+                       <button onClick={() => { setSelectedLicense(selectedLicense); setIsLicenseModalOpen(true); }} className="px-3 py-2 text-xs font-bold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1"><Edit3 size={14}/>Edit</button>
+                       <button onClick={() => handleDeleteLicense(selectedLicense)} className="px-3 py-2 text-xs font-bold rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-1"><Trash2 size={14}/>Delete</button>
+                     </div>
+                   </div>
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                       <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Provider</p><p className="font-bold text-slate-800">{selectedLicense.provider}</p></div>
                       <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Asset Value</p><p className="font-bold text-indigo-600">${Number(selectedLicense.cost || 0).toLocaleString()}</p></div>

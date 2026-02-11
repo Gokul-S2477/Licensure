@@ -394,27 +394,17 @@ router.delete("/:id", async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const statusColumn = await hasColumn("licenses", "status");
 
     await client.query("BEGIN");
-    let rowCount = 0;
-
-    if (statusColumn) {
-      const result = await client.query("UPDATE licenses SET status = 'INACTIVE' WHERE id = $1", [id]);
-      rowCount = result.rowCount;
-    } else {
-      const result = await client.query("DELETE FROM licenses WHERE id = $1", [id]);
-      rowCount = result.rowCount;
-    }
-
     await client.query("DELETE FROM license_people WHERE license_id = $1", [id]);
+    const result = await client.query("DELETE FROM licenses WHERE id = $1", [id]);
     await client.query("COMMIT");
 
-    if (rowCount === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "License not found" });
     }
 
-    res.json({ ok: true, softDeleted: statusColumn });
+    res.json({ ok: true, deleted: true });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("DELETE LICENSE ERROR:", err);
