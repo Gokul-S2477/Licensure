@@ -20,6 +20,7 @@ const hasColumn = async (table, column) => {
 };
 
 let autoMailColumnsCache = null;
+let licenseBaseColumnsCache = null;
 
 const getAutoMailColumns = async () => {
   if (autoMailColumnsCache) return autoMailColumnsCache;
@@ -50,6 +51,17 @@ const getAutoMailColumns = async () => {
     sixMonthSentAt
   };
   return autoMailColumnsCache;
+};
+
+const getLicenseBaseColumns = async () => {
+  if (licenseBaseColumnsCache) return licenseBaseColumnsCache;
+  const [status, startDate, description] = await Promise.all([
+    hasColumn("licenses", "status"),
+    hasColumn("licenses", "start_date"),
+    hasColumn("licenses", "description")
+  ]);
+  licenseBaseColumnsCache = { status, startDate, description };
+  return licenseBaseColumnsCache;
 };
 
 /* GET all licenses */
@@ -112,6 +124,7 @@ router.post("/", async (req, res) => {
     }
 
     const autoMailColumns = await getAutoMailColumns();
+    const baseColumns = await getLicenseBaseColumns();
     await client.query("BEGIN");
 
     const columns = [
@@ -119,21 +132,28 @@ router.post("/", async (req, res) => {
       "provider",
       "cost",
       "issued_date",
-      "start_date",
-      "expiry_date",
-      "status",
-      "description"
+      "expiry_date"
     ];
     const values = [
       name,
       provider,
       cost,
       issued_date,
-      start_date,
-      expiry_date,
-      status || "ACTIVE",
-      description
+      expiry_date
     ];
+
+    if (baseColumns.startDate) {
+      columns.push("start_date");
+      values.push(start_date ?? null);
+    }
+    if (baseColumns.status) {
+      columns.push("status");
+      values.push(status || "ACTIVE");
+    }
+    if (baseColumns.description) {
+      columns.push("description");
+      values.push(description ?? null);
+    }
 
     if (autoMailColumns.notifySixMonth) {
       columns.push("notify_six_month");
@@ -202,7 +222,13 @@ router.post("/", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("CREATE LICENSE ERROR:", err);
-    res.status(500).json({ error: "Failed to create license" });
+    if (err.code === "23503") {
+      return res.status(400).json({ error: "Invalid responsible/stakeholder selection" });
+    }
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "License already exists (duplicate unique value)" });
+    }
+    res.status(500).json({ error: err.message || "Failed to create license" });
   } finally {
     client.release();
   }
@@ -257,28 +283,30 @@ router.put("/:id", async (req, res) => {
         ? toBool(notify_daily_last_30)
         : toBool(existing.notify_daily_last_30);
 
+    const baseColumns = await getLicenseBaseColumns();
     await client.query("BEGIN");
 
-    const sets = [
-      "name = $1",
-      "provider = $2",
-      "cost = $3",
-      "issued_date = $4",
-      "start_date = $5",
-      "expiry_date = $6",
-      "status = $7",
-      "description = $8"
-    ];
+    const sets = ["name = $1", "provider = $2", "cost = $3", "issued_date = $4", "expiry_date = $5"];
     const updateValues = [
       nextName,
       nextProvider,
       nextCost ?? existing.cost,
       nextIssued,
-      nextStart,
-      nextExpiry,
-      nextStatus,
-      nextDesc
+      nextExpiry
     ];
+
+    if (baseColumns.startDate) {
+      sets.push(`start_date = $${updateValues.length + 1}`);
+      updateValues.push(nextStart);
+    }
+    if (baseColumns.status) {
+      sets.push(`status = $${updateValues.length + 1}`);
+      updateValues.push(nextStatus);
+    }
+    if (baseColumns.description) {
+      sets.push(`description = $${updateValues.length + 1}`);
+      updateValues.push(nextDesc);
+    }
 
     if (autoMailColumns.notifySixMonth) {
       sets.push(`notify_six_month = $${updateValues.length + 1}`);
@@ -349,7 +377,13 @@ router.put("/:id", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("UPDATE LICENSE ERROR:", err);
-    res.status(500).json({ error: "Failed to update license" });
+    if (err.code === "23503") {
+      return res.status(400).json({ error: "Invalid responsible/stakeholder selection" });
+    }
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "License already exists (duplicate unique value)" });
+    }
+    res.status(500).json({ error: err.message || "Failed to update license" });
   } finally {
     client.release();
   }
@@ -401,7 +435,7 @@ router.post("/:id/notify", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("MANUAL NOTIFY ERROR:", err);
-    res.status(500).json({ error: "Failed to send notifications" });
+    res.status(500).json({ error: err.message || "Failed to send notifications" });
   }
 });
 

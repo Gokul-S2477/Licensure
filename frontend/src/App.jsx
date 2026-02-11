@@ -288,8 +288,12 @@ const App = () => {
   };
 
   const handleSaveLicense = async (data) => {
-    const respIds = Array.from(document.querySelectorAll('input[name="responsibleIds"]:checked')).map(el => el.value);
-    const stakeIds = Array.from(document.querySelectorAll('input[name="stakeholderIds"]:checked')).map(el => el.value);
+    const respIds = Array.from(document.querySelectorAll('input[name="responsibleIds"]:checked'))
+      .map(el => Number(el.value))
+      .filter(Number.isFinite);
+    const stakeIds = Array.from(document.querySelectorAll('input[name="stakeholderIds"]:checked'))
+      .map(el => Number(el.value))
+      .filter(Number.isFinite);
     
     // Transform UI data to Backend snake_case requirements
     const payload = { 
