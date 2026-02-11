@@ -1,21 +1,26 @@
 import nodemailer from "nodemailer";
 import pool from "../config/db.js";
+import { getSmtpCredentials } from "./mailConfig.js";
 
 const daysBetween = (d1, d2) =>
   Math.ceil((new Date(d2) - new Date(d1)) / (1000 * 60 * 60 * 24));
 
-const getTransporter = () => {
-  if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
+const getTransporter = async () => {
+  const { senderEmail, senderPassword } = await getSmtpCredentials();
+  if (!senderEmail || !senderPassword) {
     return null;
   }
 
-  return nodemailer.createTransport({
+  return {
+    senderEmail,
+    transporter: nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: process.env.MAIL_USER,
-      pass: process.env.MAIL_PASS
+        user: senderEmail,
+        pass: senderPassword
+      }
     }
-  });
+  };
 };
 
 const getErrMessage = (err, fallback) =>
@@ -99,15 +104,16 @@ const renderTemplate = (template, values) =>
   });
 
 export const sendTestMail = async () => {
-  const transporter = getTransporter();
-  if (!transporter) {
-    return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
+  const mailClient = await getTransporter();
+  if (!mailClient) {
+    return { ok: false, error: "Sender mail settings not configured" };
   }
+  const { senderEmail, transporter } = mailClient;
 
   try {
     await transporter.sendMail({
-      from: `"License Bot" <${process.env.MAIL_USER}>`,
-      to: process.env.MAIL_USER,
+      from: `"License Bot" <${senderEmail}>`,
+      to: senderEmail,
       subject: "Mail test from License Management System",
       text: "If you received this, SMTP auth is working."
     });
@@ -164,10 +170,11 @@ const logMail = async (licenseId, person, mailType, subject, body, status) => {
 };
 
 export const sendNotificationsForLicenseId = async (licenseId) => {
-  const transporter = getTransporter();
-  if (!transporter) {
-    return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
+  const mailClient = await getTransporter();
+  if (!mailClient) {
+    return { ok: false, error: "Sender mail settings not configured" };
   }
+  const { senderEmail, transporter } = mailClient;
 
   const { rows: licenseRows } = await pool.query(
     "SELECT * FROM licenses WHERE id = $1",
@@ -205,7 +212,7 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
 
     try {
       await transporter.sendMail({
-        from: `"License Bot" <${process.env.MAIL_USER}>`,
+        from: `"License Bot" <${senderEmail}>`,
         to: person.email,
         subject,
         text: body
@@ -233,10 +240,11 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
 };
 
 export const sendNotificationsForLicense = async (license) => {
-  const transporter = getTransporter();
-  if (!transporter) {
-    return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
+  const mailClient = await getTransporter();
+  if (!mailClient) {
+    return { ok: false, error: "Sender mail settings not configured" };
   }
+  const { senderEmail, transporter } = mailClient;
 
   const daysLeft = daysBetween(new Date(), license.expiry_date);
   const templates = await getMessageTemplates();
@@ -265,7 +273,7 @@ export const sendNotificationsForLicense = async (license) => {
 
     try {
       await transporter.sendMail({
-        from: `"License Bot" <${process.env.MAIL_USER}>`,
+        from: `"License Bot" <${senderEmail}>`,
         to: person.email,
         subject,
         text: body

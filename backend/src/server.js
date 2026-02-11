@@ -10,6 +10,7 @@ import peopleRoutes from "./routes/people.routes.js";
 import licenseRoutes from "./routes/licenses.routes.js";
 import mailLogsRoutes from "./routes/mailLogs.routes.js";
 import messageTemplatesRoutes from "./routes/messageTemplates.routes.js";
+import smtpSettingsRoutes from "./routes/smtpSettings.routes.js";
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use("/api/people", peopleRoutes);
 app.use("/api/licenses", licenseRoutes);
 app.use("/api/mail-logs", mailLogsRoutes);
 app.use("/api/message-templates", messageTemplatesRoutes);
+app.use("/api/smtp-settings", smtpSettingsRoutes);
 
 /* -------------------- BASIC ROUTES -------------------- */
 app.get("/", (req, res) => {

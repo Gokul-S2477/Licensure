@@ -184,6 +184,12 @@ const App = () => {
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [templateError, setTemplateError] = useState(null);
   const [messageTemplates, setMessageTemplates] = useState(DEFAULT_MESSAGE_TEMPLATES);
+  const [isSmtpModalOpen, setIsSmtpModalOpen] = useState(false);
+  const [smtpUnlocked, setSmtpUnlocked] = useState(false);
+  const [smtpModulePassword, setSmtpModulePassword] = useState("");
+  const [smtpConfig, setSmtpConfig] = useState({ senderEmail: "", senderPassword: "" });
+  const [smtpInfo, setSmtpInfo] = useState({ hasPassword: false, updatedAt: null });
+  const [smtpError, setSmtpError] = useState(null);
 
   // --- Initial Data Fetching ---
   useEffect(() => {
@@ -423,6 +429,54 @@ const App = () => {
     }
   };
 
+  const handleUnlockSmtpModule = async () => {
+    try {
+      setSmtpError(null);
+      const data = await fetchJson(`${API_BASE_URL}/api/smtp-settings`, {
+        headers: {
+          "x-module-password": smtpModulePassword
+        }
+      });
+      setSmtpUnlocked(true);
+      setSmtpConfig({
+        senderEmail: data.sender_email || "",
+        senderPassword: ""
+      });
+      setSmtpInfo({
+        hasPassword: Boolean(data.has_password),
+        updatedAt: data.updated_at || null
+      });
+    } catch (err) {
+      setSmtpError(err.message || "Failed to unlock sender settings module.");
+    }
+  };
+
+  const handleSaveSmtpSettings = async () => {
+    try {
+      setSmtpError(null);
+      const data = await fetchJson(`${API_BASE_URL}/api/smtp-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          module_password: smtpModulePassword,
+          sender_email: smtpConfig.senderEmail,
+          sender_password: smtpConfig.senderPassword
+        })
+      });
+      setSmtpInfo({
+        hasPassword: Boolean(data.has_password),
+        updatedAt: data.updated_at || null
+      });
+      setSmtpConfig((prev) => ({ ...prev, senderPassword: "" }));
+      alert("Sender mail settings updated.");
+      setIsSmtpModalOpen(false);
+      setSmtpUnlocked(false);
+      setSmtpModulePassword("");
+    } catch (err) {
+      setSmtpError(err.message || "Failed to save sender mail settings.");
+    }
+  };
+
   const handleEditPerson = (person) => {
     setSelectedPerson(person);
     setPersonType(person.role === 'STAKEHOLDER' ? 'stakeholder' : 'employee');
@@ -557,7 +611,7 @@ const App = () => {
   const PeopleRegistryView = () => (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <Header title="The Registry" showBack onBack={() => setActiveTab('dashboard')} />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
          <button onClick={() => { setSelectedPerson(null); setPersonType('stakeholder'); setPersonError(null); setIsPersonModalOpen(true); }} className="p-8 bg-indigo-600 text-white rounded-3xl text-left hover:scale-[1.01] transition-all shadow-xl shadow-indigo-100 group">
             <div className="flex justify-between items-start mb-4">
               <UserPlus size={32} />
@@ -581,6 +635,24 @@ const App = () => {
             </div>
             <h3 className="text-xl font-black">Customize Messages</h3>
             <p className="text-emerald-100 text-xs mt-1">Edit mail subject/body templates with dynamic fields and your own custom text</p>
+         </button>
+         <button
+           onClick={() => {
+             setSmtpError(null);
+             setSmtpUnlocked(false);
+             setSmtpModulePassword("");
+             setSmtpConfig({ senderEmail: "", senderPassword: "" });
+             setSmtpInfo({ hasPassword: false, updatedAt: null });
+             setIsSmtpModalOpen(true);
+           }}
+           className="p-8 bg-amber-500 text-white rounded-3xl text-left hover:scale-[1.01] transition-all shadow-xl shadow-amber-100 group"
+         >
+            <div className="flex justify-between items-start mb-4">
+              <Mail size={32} />
+              <div className="p-2 bg-white/10 rounded-xl group-hover:bg-white/20 transition-colors"><ShieldCheck size={16}/></div>
+            </div>
+            <h3 className="text-xl font-black">Sender Settings</h3>
+            <p className="text-amber-100 text-xs mt-1">Manage sender mail + password (module locked with password)</p>
          </button>
       </div>
 
@@ -1110,6 +1182,72 @@ const App = () => {
                 <Button type="submit">Save Templates</Button>
               </div>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {/* SMTP Sender Settings */}
+      {isSmtpModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[160] flex items-center justify-center p-4">
+          <Card className="w-full max-w-xl animate-in zoom-in-95" noPadding>
+            <div className="p-6 border-b bg-white flex justify-between items-center">
+              <h3 className="text-xl font-black">Sender Mail Settings</h3>
+              <button onClick={() => { setIsSmtpModalOpen(false); setSmtpError(null); }} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">✕</button>
+            </div>
+            <div className="p-8 space-y-5">
+              {!smtpUnlocked ? (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 px-1">Module Password</label>
+                    <input
+                      type="password"
+                      value={smtpModulePassword}
+                      onChange={(e) => setSmtpModulePassword(e.target.value)}
+                      placeholder="Enter module password"
+                      className="w-full p-3.5 bg-slate-50 border rounded-xl outline-none focus:border-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button onClick={handleUnlockSmtpModule}>Unlock</Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 px-1">Sender Email</label>
+                    <input
+                      type="email"
+                      value={smtpConfig.senderEmail}
+                      onChange={(e) => setSmtpConfig((prev) => ({ ...prev, senderEmail: e.target.value }))}
+                      placeholder="sender@gmail.com"
+                      className="w-full p-3.5 bg-slate-50 border rounded-xl outline-none focus:border-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 px-1">Sender App Password</label>
+                    <input
+                      type="password"
+                      value={smtpConfig.senderPassword}
+                      onChange={(e) => setSmtpConfig((prev) => ({ ...prev, senderPassword: e.target.value }))}
+                      placeholder="Enter app password"
+                      className="w-full p-3.5 bg-slate-50 border rounded-xl outline-none focus:border-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    Existing password saved: <span className="font-black">{smtpInfo.hasPassword ? "Yes" : "No"}</span>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    <Button variant="ghost" onClick={() => setIsSmtpModalOpen(false)}>Cancel</Button>
+                    <Button onClick={handleSaveSmtpSettings}>Save Sender Settings</Button>
+                  </div>
+                </>
+              )}
+              {smtpError && (
+                <div className="px-3 py-2 rounded-lg bg-rose-50 text-rose-700 text-xs font-bold border border-rose-100">
+                  {smtpError}
+                </div>
+              )}
+            </div>
           </Card>
         </div>
       )}
