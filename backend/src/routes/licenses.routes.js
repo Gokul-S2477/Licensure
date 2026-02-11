@@ -206,15 +206,21 @@ router.post("/", async (req, res) => {
     await client.query("COMMIT");
 
     if (autoMailColumns.notifySixMonth && shouldSendImmediateSixMonth(rows[0])) {
-      const mailResult = await sendNotificationsForLicenseId(rows[0].id);
-      if (!mailResult.ok) {
-        console.warn("Immediate six-month notification failed:", mailResult.error, {
+      try {
+        const mailResult = await sendNotificationsForLicenseId(rows[0].id);
+        if (!mailResult.ok) {
+          console.warn("Immediate six-month notification failed:", mailResult.error, {
+            licenseId: rows[0].id
+          });
+        } else if (autoMailColumns.sixMonthSentAt) {
+          await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
+            rows[0].id
+          ]);
+        }
+      } catch (err) {
+        console.warn("Immediate six-month notification crashed:", err.message, {
           licenseId: rows[0].id
         });
-      } else if (autoMailColumns.sixMonthSentAt) {
-        await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
-          rows[0].id
-        ]);
       }
     }
 
@@ -361,15 +367,21 @@ router.put("/:id", async (req, res) => {
     await client.query("COMMIT");
 
     if (autoMailColumns.notifySixMonth && shouldSendImmediateSixMonth(rows[0])) {
-      const mailResult = await sendNotificationsForLicenseId(rows[0].id);
-      if (!mailResult.ok) {
-        console.warn("Immediate six-month notification failed on update:", mailResult.error, {
+      try {
+        const mailResult = await sendNotificationsForLicenseId(rows[0].id);
+        if (!mailResult.ok) {
+          console.warn("Immediate six-month notification failed on update:", mailResult.error, {
+            licenseId: rows[0].id
+          });
+        } else if (autoMailColumns.sixMonthSentAt) {
+          await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
+            rows[0].id
+          ]);
+        }
+      } catch (err) {
+        console.warn("Immediate six-month notification crashed on update:", err.message, {
           licenseId: rows[0].id
         });
-      } else if (autoMailColumns.sixMonthSentAt) {
-        await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
-          rows[0].id
-        ]);
       }
     }
 

@@ -103,18 +103,17 @@ export const sendTestMail = async () => {
   if (!transporter) {
     return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
   }
-  try {
-    await transporter.verify();
-  } catch (err) {
-    return { ok: false, error: getErrMessage(err, "Mail transport verification failed") };
-  }
 
-  await transporter.sendMail({
-    from: `"License Bot" <${process.env.MAIL_USER}>`,
-    to: process.env.MAIL_USER,
-    subject: "Mail test from License Management System",
-    text: "If you received this, SMTP auth is working."
-  });
+  try {
+    await transporter.sendMail({
+      from: `"License Bot" <${process.env.MAIL_USER}>`,
+      to: process.env.MAIL_USER,
+      subject: "Mail test from License Management System",
+      text: "If you received this, SMTP auth is working."
+    });
+  } catch (err) {
+    return { ok: false, error: getErrMessage(err, "Mail send failed") };
+  }
 
   return { ok: true };
 };
@@ -168,11 +167,6 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
   const transporter = getTransporter();
   if (!transporter) {
     return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
-  }
-  try {
-    await transporter.verify();
-  } catch (err) {
-    return { ok: false, error: getErrMessage(err, "Mail transport verification failed") };
   }
 
   const { rows: licenseRows } = await pool.query(
@@ -242,11 +236,6 @@ export const sendNotificationsForLicense = async (license) => {
   const transporter = getTransporter();
   if (!transporter) {
     return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
-  }
-  try {
-    await transporter.verify();
-  } catch (err) {
-    return { ok: false, error: getErrMessage(err, "Mail transport verification failed") };
   }
 
   const daysLeft = daysBetween(new Date(), license.expiry_date);
