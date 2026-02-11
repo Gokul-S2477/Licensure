@@ -162,6 +162,8 @@ const formatDateInput = (value) => {
   return d.toISOString().slice(0, 10);
 };
 
+const normalizeId = (value) => String(value ?? "");
+
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard'); 
   const [currentView, setCurrentView] = useState('list'); 
@@ -259,7 +261,10 @@ const App = () => {
     
     const deptData = {};
     licenses.forEach(l => {
-      const dept = employees.find(e => l.responsibleIds?.includes(e.id))?.department || 'Other';
+      const dept =
+        employees.find((e) =>
+          (l.responsibleIds || []).some((id) => normalizeId(id) === normalizeId(e.id))
+        )?.department || 'Other';
       deptData[dept] = (deptData[dept] || 0) + 1;
     });
 
@@ -311,12 +316,17 @@ const App = () => {
   };
 
   const handleSaveLicense = async (data) => {
+    const parseId = (raw) => {
+      const value = String(raw ?? "").trim();
+      if (!value) return null;
+      return /^\d+$/.test(value) ? Number(value) : value;
+    };
     const respIds = Array.from(document.querySelectorAll('input[name="responsibleIds"]:checked'))
-      .map(el => Number(el.value))
-      .filter(Number.isFinite);
+      .map(el => parseId(el.value))
+      .filter(id => id !== null);
     const stakeIds = Array.from(document.querySelectorAll('input[name="stakeholderIds"]:checked'))
-      .map(el => Number(el.value))
-      .filter(Number.isFinite);
+      .map(el => parseId(el.value))
+      .filter(id => id !== null);
     
     // Transform UI data to Backend snake_case requirements
     const payload = { 
@@ -826,7 +836,7 @@ const App = () => {
                             <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">Responsibles (${selectedLicense.responsibleIds?.length || 0})</p>
                             <div className="space-y-2">
                                {selectedLicense.responsibleIds?.map(id => {
-                                 const e = employees.find(x => x.id === id);
+                                 const e = employees.find(x => normalizeId(x.id) === normalizeId(id));
                                  return (
                                    <div key={id} className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
                                       <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-[10px] font-bold">{e?.name ? e.name[0] : '?'}</div>
@@ -843,7 +853,7 @@ const App = () => {
                             <p className="text-[10px] font-black text-sky-600 uppercase mb-2">Stakeholders (${selectedLicense.stakeholderIds?.length || 0})</p>
                             <div className="space-y-2">
                                {selectedLicense.stakeholderIds?.map(id => {
-                                 const s = stakeholders.find(x => x.id === id);
+                                 const s = stakeholders.find(x => normalizeId(x.id) === normalizeId(id));
                                  return (
                                    <div key={id} className="flex items-center gap-3 p-3 bg-sky-50 rounded-xl border border-sky-100">
                                       <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white text-[10px] font-bold">{s?.name ? s.name[0] : '?'}</div>
@@ -895,7 +905,7 @@ const App = () => {
                     <div className="max-h-56 overflow-y-auto border border-slate-100 rounded-2xl p-4 space-y-2 bg-slate-50/50">
                        {employees.map(e => (
                          <label key={e.id} className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-white rounded-xl transition-all border border-transparent hover:border-slate-100">
-                            <input type="checkbox" name="responsibleIds" value={e.id} defaultChecked={selectedLicense?.responsibleIds?.includes(e.id)} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                            <input type="checkbox" name="responsibleIds" value={e.id} defaultChecked={(selectedLicense?.responsibleIds || []).some(id => normalizeId(id) === normalizeId(e.id))} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                             <div className="text-xs font-bold text-slate-700 group-hover:text-indigo-600">{e.name} <span className="text-[9px] text-slate-400 uppercase font-black ml-1">[{e.role}]</span></div>
                          </label>
                        ))}
@@ -906,7 +916,7 @@ const App = () => {
                     <div className="max-h-56 overflow-y-auto border border-slate-100 rounded-2xl p-4 space-y-2 bg-slate-50/50">
                        {stakeholders.map(s => (
                          <label key={s.id} className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-white rounded-xl transition-all border border-transparent hover:border-slate-100">
-                            <input type="checkbox" name="stakeholderIds" value={s.id} defaultChecked={selectedLicense?.stakeholderIds?.includes(s.id)} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                            <input type="checkbox" name="stakeholderIds" value={s.id} defaultChecked={(selectedLicense?.stakeholderIds || []).some(id => normalizeId(id) === normalizeId(s.id))} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                             <div className="text-xs font-bold text-slate-700 group-hover:text-indigo-600">{s.name} <span className="text-[9px] text-slate-400 uppercase font-black ml-1">[{s.designation || s.role}]</span></div>
                          </label>
                        ))}
