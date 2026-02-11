@@ -1,0 +1,28 @@
+{
+  "name": "license-management-backend",
+  "version": "1.0.0",
+  "description": "Backend server for License Management System",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "keywords": [
+    "license-management",
+    "nodejs",
+    "express",
+    "cron",
+    "nodemailer"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.0",
+    "pg": "^8.18.0"
+  }
+}
