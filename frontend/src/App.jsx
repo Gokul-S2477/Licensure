@@ -39,7 +39,7 @@ import {
   Hash
 } from 'lucide-react';
 
-const API_BASE_URL = "https://licensure.onrender.com";
+const API_BASE_URL = "http://localhost:5000";
 const DEFAULT_MESSAGE_TEMPLATES = {
   responsibleSubject: "ACTION REQUIRED: {{license_name}} expires in {{days_left}} days",
   responsibleBody: `Dear {{person_name}},
@@ -162,8 +162,6 @@ const formatDateInput = (value) => {
   return d.toISOString().slice(0, 10);
 };
 
-const normalizeId = (value) => String(value ?? "");
-
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard'); 
   const [currentView, setCurrentView] = useState('list'); 
@@ -261,10 +259,7 @@ const App = () => {
     
     const deptData = {};
     licenses.forEach(l => {
-      const dept =
-        employees.find((e) =>
-          (l.responsibleIds || []).some((id) => normalizeId(id) === normalizeId(e.id))
-        )?.department || 'Other';
+      const dept = employees.find(e => l.responsibleIds?.includes(e.id))?.department || 'Other';
       deptData[dept] = (deptData[dept] || 0) + 1;
     });
 
@@ -282,51 +277,19 @@ const App = () => {
 
   const handleManualSend = async (license) => {
     try {
-      const result = await fetchJson(`${API_BASE_URL}/api/licenses/${license.id}/notify`, {
+      await fetchJson(`${API_BASE_URL}/api/licenses/${license.id}/notify`, {
         method: 'POST'
       });
       loadMailLogs(); 
-      if (result?.failed > 0) {
-        alert(`Notifications sent with partial failures. Sent: ${result.sent || 0}, Failed: ${result.failed || 0}.`);
-      } else {
-        alert(`Notifications sent successfully. Sent: ${result?.sent || 0}.`);
-      }
+      alert(`Notifications triggered successfully.`);
     } catch (err) {
       alert(err.message || "Failed to send notifications. Check backend.");
     }
   };
 
-  const handleDeleteLicense = async (license) => {
-    const ok = window.confirm(`Delete license "${license.name}" permanently?`);
-    if (!ok) return;
-    try {
-      await fetchJson(`${API_BASE_URL}/api/licenses/${license.id}`, {
-        method: 'DELETE'
-      });
-      if (selectedLicense?.id === license.id) {
-        setSelectedLicense(null);
-        setCurrentView('list');
-      }
-      await loadLicenses();
-      await loadMailLogs();
-      alert("License deleted successfully.");
-    } catch (err) {
-      alert(err.message || "Failed to delete license.");
-    }
-  };
-
   const handleSaveLicense = async (data) => {
-    const parseId = (raw) => {
-      const value = String(raw ?? "").trim();
-      if (!value) return null;
-      return /^\d+$/.test(value) ? Number(value) : value;
-    };
-    const respIds = Array.from(document.querySelectorAll('input[name="responsibleIds"]:checked'))
-      .map(el => parseId(el.value))
-      .filter(id => id !== null);
-    const stakeIds = Array.from(document.querySelectorAll('input[name="stakeholderIds"]:checked'))
-      .map(el => parseId(el.value))
-      .filter(id => id !== null);
+    const respIds = Array.from(document.querySelectorAll('input[name="responsibleIds"]:checked')).map(el => el.value);
+    const stakeIds = Array.from(document.querySelectorAll('input[name="stakeholderIds"]:checked')).map(el => el.value);
     
     // Transform UI data to Backend snake_case requirements
     const payload = { 
@@ -423,7 +386,6 @@ const App = () => {
     }
   };
 
-
   const handleEditPerson = (person) => {
     setSelectedPerson(person);
     setPersonType(person.role === 'STAKEHOLDER' ? 'stakeholder' : 'employee');
@@ -441,6 +403,24 @@ const App = () => {
       loadPeople();
     } catch (err) {
       alert(err.message || "Error deleting person record.");
+    }
+  };
+
+  const handleDeleteLicense = async (license) => {
+    const ok = window.confirm(`Delete ${license.name}? This action cannot be undone.`);
+    if (!ok) return;
+    try {
+      await fetchJson(`${API_BASE_URL}/api/licenses/${license.id}`, {
+        method: 'DELETE'
+      });
+      if (selectedLicense?.id === license.id) {
+        setSelectedLicense(null);
+        setCurrentView('list');
+      }
+      loadLicenses();
+      loadMailLogs();
+    } catch (err) {
+      alert(err.message || "Error deleting license.");
     }
   };
 
@@ -798,14 +778,7 @@ const App = () => {
               <Header title={selectedLicense.name} showBack onBack={() => setCurrentView('list')} />
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card className="lg:col-span-2">
-                   <div className="flex items-center justify-between mb-6">
-                     <h3 className="font-black text-slate-800 flex items-center gap-2"><Info size={18} className="text-indigo-600" /> Technical Matrix</h3>
-                     <div className="flex items-center gap-2">
-                       <button onClick={() => handleManualSend(selectedLicense)} className="px-3 py-2 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center gap-1"><Send size={14}/>Send Mail</button>
-                       <button onClick={() => { setSelectedLicense(selectedLicense); setIsLicenseModalOpen(true); }} className="px-3 py-2 text-xs font-bold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1"><Edit3 size={14}/>Edit</button>
-                       <button onClick={() => handleDeleteLicense(selectedLicense)} className="px-3 py-2 text-xs font-bold rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-1"><Trash2 size={14}/>Delete</button>
-                     </div>
-                   </div>
+                   <h3 className="font-black text-slate-800 mb-6 flex items-center gap-2"><Info size={18} className="text-indigo-600" /> Technical Matrix</h3>
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                       <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Provider</p><p className="font-bold text-slate-800">{selectedLicense.provider}</p></div>
                       <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Asset Value</p><p className="font-bold text-indigo-600">${Number(selectedLicense.cost || 0).toLocaleString()}</p></div>
@@ -837,7 +810,7 @@ const App = () => {
                             <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">Responsibles (${selectedLicense.responsibleIds?.length || 0})</p>
                             <div className="space-y-2">
                                {selectedLicense.responsibleIds?.map(id => {
-                                 const e = employees.find(x => normalizeId(x.id) === normalizeId(id));
+                                 const e = employees.find(x => x.id === id);
                                  return (
                                    <div key={id} className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
                                       <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-[10px] font-bold">{e?.name ? e.name[0] : '?'}</div>
@@ -854,7 +827,7 @@ const App = () => {
                             <p className="text-[10px] font-black text-sky-600 uppercase mb-2">Stakeholders (${selectedLicense.stakeholderIds?.length || 0})</p>
                             <div className="space-y-2">
                                {selectedLicense.stakeholderIds?.map(id => {
-                                 const s = stakeholders.find(x => normalizeId(x.id) === normalizeId(id));
+                                 const s = stakeholders.find(x => x.id === id);
                                  return (
                                    <div key={id} className="flex items-center gap-3 p-3 bg-sky-50 rounded-xl border border-sky-100">
                                       <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white text-[10px] font-bold">{s?.name ? s.name[0] : '?'}</div>
@@ -906,7 +879,7 @@ const App = () => {
                     <div className="max-h-56 overflow-y-auto border border-slate-100 rounded-2xl p-4 space-y-2 bg-slate-50/50">
                        {employees.map(e => (
                          <label key={e.id} className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-white rounded-xl transition-all border border-transparent hover:border-slate-100">
-                            <input type="checkbox" name="responsibleIds" value={e.id} defaultChecked={(selectedLicense?.responsibleIds || []).some(id => normalizeId(id) === normalizeId(e.id))} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                            <input type="checkbox" name="responsibleIds" value={e.id} defaultChecked={selectedLicense?.responsibleIds?.includes(e.id)} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                             <div className="text-xs font-bold text-slate-700 group-hover:text-indigo-600">{e.name} <span className="text-[9px] text-slate-400 uppercase font-black ml-1">[{e.role}]</span></div>
                          </label>
                        ))}
@@ -917,7 +890,7 @@ const App = () => {
                     <div className="max-h-56 overflow-y-auto border border-slate-100 rounded-2xl p-4 space-y-2 bg-slate-50/50">
                        {stakeholders.map(s => (
                          <label key={s.id} className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-white rounded-xl transition-all border border-transparent hover:border-slate-100">
-                            <input type="checkbox" name="stakeholderIds" value={s.id} defaultChecked={(selectedLicense?.stakeholderIds || []).some(id => normalizeId(id) === normalizeId(s.id))} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                            <input type="checkbox" name="stakeholderIds" value={s.id} defaultChecked={selectedLicense?.stakeholderIds?.includes(s.id)} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                             <div className="text-xs font-bold text-slate-700 group-hover:text-indigo-600">{s.name} <span className="text-[9px] text-slate-400 uppercase font-black ml-1">[{s.designation || s.role}]</span></div>
                          </label>
                        ))}

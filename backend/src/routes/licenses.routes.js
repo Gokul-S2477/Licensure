@@ -20,7 +20,6 @@ const hasColumn = async (table, column) => {
 };
 
 let autoMailColumnsCache = null;
-let licenseBaseColumnsCache = null;
 
 const getAutoMailColumns = async () => {
   if (autoMailColumnsCache) return autoMailColumnsCache;
@@ -51,17 +50,6 @@ const getAutoMailColumns = async () => {
     sixMonthSentAt
   };
   return autoMailColumnsCache;
-};
-
-const getLicenseBaseColumns = async () => {
-  if (licenseBaseColumnsCache) return licenseBaseColumnsCache;
-  const [status, startDate, description] = await Promise.all([
-    hasColumn("licenses", "status"),
-    hasColumn("licenses", "start_date"),
-    hasColumn("licenses", "description")
-  ]);
-  licenseBaseColumnsCache = { status, startDate, description };
-  return licenseBaseColumnsCache;
 };
 
 /* GET all licenses */
@@ -124,7 +112,6 @@ router.post("/", async (req, res) => {
     }
 
     const autoMailColumns = await getAutoMailColumns();
-    const baseColumns = await getLicenseBaseColumns();
     await client.query("BEGIN");
 
     const columns = [
@@ -132,28 +119,21 @@ router.post("/", async (req, res) => {
       "provider",
       "cost",
       "issued_date",
-      "expiry_date"
+      "start_date",
+      "expiry_date",
+      "status",
+      "description"
     ];
     const values = [
       name,
       provider,
       cost,
       issued_date,
-      expiry_date
+      start_date,
+      expiry_date,
+      status || "ACTIVE",
+      description
     ];
-
-    if (baseColumns.startDate) {
-      columns.push("start_date");
-      values.push(start_date ?? null);
-    }
-    if (baseColumns.status) {
-      columns.push("status");
-      values.push(status || "ACTIVE");
-    }
-    if (baseColumns.description) {
-      columns.push("description");
-      values.push(description ?? null);
-    }
 
     if (autoMailColumns.notifySixMonth) {
       columns.push("notify_six_month");
@@ -206,21 +186,15 @@ router.post("/", async (req, res) => {
     await client.query("COMMIT");
 
     if (autoMailColumns.notifySixMonth && shouldSendImmediateSixMonth(rows[0])) {
-      try {
-        const mailResult = await sendNotificationsForLicenseId(rows[0].id);
-        if (!mailResult.ok) {
-          console.warn("Immediate six-month notification failed:", mailResult.error, {
-            licenseId: rows[0].id
-          });
-        } else if (autoMailColumns.sixMonthSentAt) {
-          await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
-            rows[0].id
-          ]);
-        }
-      } catch (err) {
-        console.warn("Immediate six-month notification crashed:", err.message, {
+      const mailResult = await sendNotificationsForLicenseId(rows[0].id);
+      if (!mailResult.ok) {
+        console.warn("Immediate six-month notification failed:", mailResult.error, {
           licenseId: rows[0].id
         });
+      } else if (autoMailColumns.sixMonthSentAt) {
+        await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
+          rows[0].id
+        ]);
       }
     }
 
@@ -228,13 +202,7 @@ router.post("/", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("CREATE LICENSE ERROR:", err);
-    if (err.code === "23503") {
-      return res.status(400).json({ error: "Invalid responsible/stakeholder selection" });
-    }
-    if (err.code === "23505") {
-      return res.status(409).json({ error: "License already exists (duplicate unique value)" });
-    }
-    res.status(500).json({ error: err.message || "Failed to create license" });
+    res.status(500).json({ error: "Failed to create license" });
   } finally {
     client.release();
   }
@@ -289,30 +257,28 @@ router.put("/:id", async (req, res) => {
         ? toBool(notify_daily_last_30)
         : toBool(existing.notify_daily_last_30);
 
-    const baseColumns = await getLicenseBaseColumns();
     await client.query("BEGIN");
 
-    const sets = ["name = $1", "provider = $2", "cost = $3", "issued_date = $4", "expiry_date = $5"];
+    const sets = [
+      "name = $1",
+      "provider = $2",
+      "cost = $3",
+      "issued_date = $4",
+      "start_date = $5",
+      "expiry_date = $6",
+      "status = $7",
+      "description = $8"
+    ];
     const updateValues = [
       nextName,
       nextProvider,
       nextCost ?? existing.cost,
       nextIssued,
-      nextExpiry
+      nextStart,
+      nextExpiry,
+      nextStatus,
+      nextDesc
     ];
-
-    if (baseColumns.startDate) {
-      sets.push(`start_date = $${updateValues.length + 1}`);
-      updateValues.push(nextStart);
-    }
-    if (baseColumns.status) {
-      sets.push(`status = $${updateValues.length + 1}`);
-      updateValues.push(nextStatus);
-    }
-    if (baseColumns.description) {
-      sets.push(`description = $${updateValues.length + 1}`);
-      updateValues.push(nextDesc);
-    }
 
     if (autoMailColumns.notifySixMonth) {
       sets.push(`notify_six_month = $${updateValues.length + 1}`);
@@ -367,21 +333,15 @@ router.put("/:id", async (req, res) => {
     await client.query("COMMIT");
 
     if (autoMailColumns.notifySixMonth && shouldSendImmediateSixMonth(rows[0])) {
-      try {
-        const mailResult = await sendNotificationsForLicenseId(rows[0].id);
-        if (!mailResult.ok) {
-          console.warn("Immediate six-month notification failed on update:", mailResult.error, {
-            licenseId: rows[0].id
-          });
-        } else if (autoMailColumns.sixMonthSentAt) {
-          await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
-            rows[0].id
-          ]);
-        }
-      } catch (err) {
-        console.warn("Immediate six-month notification crashed on update:", err.message, {
+      const mailResult = await sendNotificationsForLicenseId(rows[0].id);
+      if (!mailResult.ok) {
+        console.warn("Immediate six-month notification failed on update:", mailResult.error, {
           licenseId: rows[0].id
         });
+      } else if (autoMailColumns.sixMonthSentAt) {
+        await pool.query("UPDATE licenses SET six_month_sent_at = NOW() WHERE id = $1", [
+          rows[0].id
+        ]);
       }
     }
 
@@ -389,13 +349,7 @@ router.put("/:id", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("UPDATE LICENSE ERROR:", err);
-    if (err.code === "23503") {
-      return res.status(400).json({ error: "Invalid responsible/stakeholder selection" });
-    }
-    if (err.code === "23505") {
-      return res.status(409).json({ error: "License already exists (duplicate unique value)" });
-    }
-    res.status(500).json({ error: err.message || "Failed to update license" });
+    res.status(500).json({ error: "Failed to update license" });
   } finally {
     client.release();
   }
@@ -437,7 +391,7 @@ router.post("/:id/notify", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("MANUAL NOTIFY ERROR:", err);
-    res.status(500).json({ error: err.message || "Failed to send notifications" });
+    res.status(500).json({ error: "Failed to send notifications" });
   }
 });
 

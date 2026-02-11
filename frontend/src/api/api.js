@@ -1,4 +1,4 @@
-const API_BASE = "https://licensure.onrender.com/api";
+const API_BASE = "http://localhost:5000/api";
 
 export async function fetchLicenses() {
   const res = await fetch(`${API_BASE}/licenses`);

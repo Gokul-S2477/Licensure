@@ -4,25 +4,19 @@ import pool from "../config/db.js";
 const daysBetween = (d1, d2) =>
   Math.ceil((new Date(d2) - new Date(d1)) / (1000 * 60 * 60 * 24));
 
-const getTransporter = async () => {
+const getTransporter = () => {
   if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
     return null;
   }
 
-  return {
-    senderEmail: process.env.MAIL_USER,
-    transporter: nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS
-      }
-    })
-  };
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.MAIL_USER,
+      pass: process.env.MAIL_PASS
+    }
+  });
 };
-
-const getErrMessage = (err, fallback) =>
-  err?.response || err?.message || fallback;
 
 const DEFAULT_TEMPLATES = {
   responsible_subject: "ACTION REQUIRED: {{license_name}} expires in {{days_left}} days",
@@ -102,22 +96,22 @@ const renderTemplate = (template, values) =>
   });
 
 export const sendTestMail = async () => {
-  const mailClient = await getTransporter();
-  if (!mailClient) {
+  const transporter = getTransporter();
+  if (!transporter) {
     return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
   }
-  const { senderEmail, transporter } = mailClient;
-
   try {
-    await transporter.sendMail({
-      from: `"License Bot" <${senderEmail}>`,
-      to: senderEmail,
-      subject: "Mail test from License Management System",
-      text: "If you received this, SMTP auth is working."
-    });
+    await transporter.verify();
   } catch (err) {
-    return { ok: false, error: getErrMessage(err, "Mail send failed") };
+    return { ok: false, error: "Mail transport verification failed" };
   }
+
+  await transporter.sendMail({
+    from: `"License Bot" <${process.env.MAIL_USER}>`,
+    to: process.env.MAIL_USER,
+    subject: "Mail test from License Management System",
+    text: "If you received this, SMTP auth is working."
+  });
 
   return { ok: true };
 };
@@ -168,11 +162,15 @@ const logMail = async (licenseId, person, mailType, subject, body, status) => {
 };
 
 export const sendNotificationsForLicenseId = async (licenseId) => {
-  const mailClient = await getTransporter();
-  if (!mailClient) {
+  const transporter = getTransporter();
+  if (!transporter) {
     return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
   }
-  const { senderEmail, transporter } = mailClient;
+  try {
+    await transporter.verify();
+  } catch (err) {
+    return { ok: false, error: "Mail transport verification failed" };
+  }
 
   const { rows: licenseRows } = await pool.query(
     "SELECT * FROM licenses WHERE id = $1",
@@ -201,7 +199,6 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
 
   let sent = 0;
   let failed = 0;
-  let firstFailureReason = null;
 
   for (const person of recipients) {
     const isResponsible = person.responsibility === "RESPONSIBLE";
@@ -210,7 +207,7 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
 
     try {
       await transporter.sendMail({
-        from: `"License Bot" <${senderEmail}>`,
+        from: `"License Bot" <${process.env.MAIL_USER}>`,
         to: person.email,
         subject,
         text: body
@@ -218,31 +215,24 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
       await logMail(license.id, person, mailType, subject, body, "SENT");
       sent++;
     } catch (err) {
-      firstFailureReason = firstFailureReason || getErrMessage(err, "Mail send failed");
       await logMail(license.id, person, mailType, subject, body, "FAILED");
       failed++;
     }
-  }
-
-  if (sent === 0) {
-    return {
-      ok: false,
-      error: firstFailureReason || "All notification sends failed",
-      sent,
-      failed,
-      total: recipients.length
-    };
   }
 
   return { ok: true, sent, failed, total: recipients.length };
 };
 
 export const sendNotificationsForLicense = async (license) => {
-  const mailClient = await getTransporter();
-  if (!mailClient) {
+  const transporter = getTransporter();
+  if (!transporter) {
     return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
   }
-  const { senderEmail, transporter } = mailClient;
+  try {
+    await transporter.verify();
+  } catch (err) {
+    return { ok: false, error: "Mail transport verification failed" };
+  }
 
   const daysLeft = daysBetween(new Date(), license.expiry_date);
   const templates = await getMessageTemplates();
@@ -262,7 +252,6 @@ export const sendNotificationsForLicense = async (license) => {
 
   let sent = 0;
   let failed = 0;
-  let firstFailureReason = null;
 
   for (const person of recipients) {
     const isResponsible = person.responsibility === "RESPONSIBLE";
@@ -271,7 +260,7 @@ export const sendNotificationsForLicense = async (license) => {
 
     try {
       await transporter.sendMail({
-        from: `"License Bot" <${senderEmail}>`,
+        from: `"License Bot" <${process.env.MAIL_USER}>`,
         to: person.email,
         subject,
         text: body
@@ -279,20 +268,9 @@ export const sendNotificationsForLicense = async (license) => {
       await logMail(license.id, person, mailType, subject, body, "SENT");
       sent++;
     } catch (err) {
-      firstFailureReason = firstFailureReason || getErrMessage(err, "Mail send failed");
       await logMail(license.id, person, mailType, subject, body, "FAILED");
       failed++;
     }
-  }
-
-  if (sent === 0) {
-    return {
-      ok: false,
-      error: firstFailureReason || "All notification sends failed",
-      sent,
-      failed,
-      total: recipients.length
-    };
   }
 
   return { ok: true, sent, failed, total: recipients.length };
