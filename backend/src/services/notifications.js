@@ -1,25 +1,23 @@
 import nodemailer from "nodemailer";
 import pool from "../config/db.js";
-import { getSmtpCredentials } from "./mailConfig.js";
 
 const daysBetween = (d1, d2) =>
   Math.ceil((new Date(d2) - new Date(d1)) / (1000 * 60 * 60 * 24));
 
 const getTransporter = async () => {
-  const { senderEmail, senderPassword } = await getSmtpCredentials();
-  if (!senderEmail || !senderPassword) {
+  if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
     return null;
   }
 
   return {
-    senderEmail,
+    senderEmail: process.env.MAIL_USER,
     transporter: nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: senderEmail,
-        pass: senderPassword
+      service: "gmail",
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS
       }
-    }
+    })
   };
 };
 
@@ -106,7 +104,7 @@ const renderTemplate = (template, values) =>
 export const sendTestMail = async () => {
   const mailClient = await getTransporter();
   if (!mailClient) {
-    return { ok: false, error: "Sender mail settings not configured" };
+    return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
   }
   const { senderEmail, transporter } = mailClient;
 
@@ -172,7 +170,7 @@ const logMail = async (licenseId, person, mailType, subject, body, status) => {
 export const sendNotificationsForLicenseId = async (licenseId) => {
   const mailClient = await getTransporter();
   if (!mailClient) {
-    return { ok: false, error: "Sender mail settings not configured" };
+    return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
   }
   const { senderEmail, transporter } = mailClient;
 
@@ -242,7 +240,7 @@ export const sendNotificationsForLicenseId = async (licenseId) => {
 export const sendNotificationsForLicense = async (license) => {
   const mailClient = await getTransporter();
   if (!mailClient) {
-    return { ok: false, error: "Sender mail settings not configured" };
+    return { ok: false, error: "MAIL_USER/MAIL_PASS not set" };
   }
   const { senderEmail, transporter } = mailClient;
 
