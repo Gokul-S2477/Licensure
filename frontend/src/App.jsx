@@ -39,7 +39,7 @@ import {
   Hash
 } from 'lucide-react';
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL = "https://licensure.onrender.com";
 const DEFAULT_MESSAGE_TEMPLATES = {
   responsibleSubject: "ACTION REQUIRED: {{license_name}} expires in {{days_left}} days",
   responsibleBody: `Dear {{person_name}},
